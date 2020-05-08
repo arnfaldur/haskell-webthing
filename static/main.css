@@ -1,4 +1,19 @@
 body {
     color: white;
     background-color: black;
+    font-family: sans-serif;
+    overflow-wrap: anywhere;
+}
+
+.button {
+    border: 0.05em;
+    border-radius: 100%;
+    border-style: solid;
+    border-color: #222;
+    margin: 0.15em 0.1em;
+}
+
+.number {
+    margin: 10% 20%;
+    font-size: large;
 }
