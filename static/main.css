@@ -11,6 +11,8 @@ body {
     border-style: solid;
     border-color: #222;
     margin: 0.15em 0.1em;
+    width: 1.6em;
+    height: 1.6em;
 }
 
 .number {
