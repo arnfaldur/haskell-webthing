@@ -3,6 +3,7 @@ body {
     background-color: black;
     font-family: sans-serif;
     overflow-wrap: anywhere;
+    margin: 7.5% 25%
 }
 
 .button {
@@ -11,9 +12,11 @@ body {
     border-style: solid;
     border-color: #222;
     margin: 0.15em 0.1em;
-    width: 1.6em;
-    height: 1.6em;
+    width: 3em;
+    height: 3em;
     transition-duration: 100ms;
+    font-size: large;
+    outline: none;
 }
 
 .number {

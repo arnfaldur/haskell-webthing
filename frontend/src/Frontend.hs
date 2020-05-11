@@ -39,19 +39,46 @@ frontend = Frontend
                      <> "type" =: "text/css"
                      <> "rel" =: "stylesheet") blank
   , _frontend_body = do
-      let nimState = reverse [1..6]
+
+      el "h1"  $ text "Welcome to Nim"
+
+      elAttr "p" ("margin" =: "40px") $ text "Try to beat Dr. Nim, the master of all nimians."
+
+      --eBtn <- button "Start"
+      (elBtn, _) <- elAttr' "button" ("class" =: "button") $ text "Start"
+
+      let eBtn = domEvent Click elBtn
+
+      --dBool <- toggle False (domEvent Click eBtn)
+
+      -- el "h1" $ dynText $ fmap tshow $ dBool
+
+      --if
+      let nimState = []
       rec
         -- understandable AI implementation:
         -- stateDyn :: Dynamic t GameState <-
         --   foldDyn (\m (b,p) -> (\bo -> (nim (bestMove bo) bo, not p)) $ nim m b) (nimState,True) clickEvent
+        gameText <-
+          foldDyn ($) "" . mergeWith (.) $ [
+              (\_ -> "") <$ eBtn
+            , (\_ -> "Game Over") <$ ffilter (emptyBoard . fst) eStateUpdate
+          ]
+        el "h1" $ dynText $ fmap tshow $ gameText
+
         stateDyn :: Dynamic t GameState <-
-          foldDyn (\m (b,p) -> (\bo -> (bo, not p)) $ nim m b) (nimState,True) clickEvent
+          foldDyn ($) (nimState, True) . mergeWith (.) $ [
+            fmap (\m (b,p) -> (\bo -> (bo, not p)) $ nim m b) clickEvent
+            , (\_ -> (reverse [1..6], True)) <$ eBtn
+          ]
+        let eStateUpdate = updated stateDyn
         let wha = buttons <$> stateDyn
         huh :: Event t (Event t Move, Event t Move) <- networkView wha
         hoverEvent :: Event t Move <- switchHold never $ fst <$> huh
         clickEvent :: Event t Move <- switchHold never $ snd <$> huh
         bom <- holdDyn (0,0) $ clickEvent
         bim <- holdDyn (0,0) $ hoverEvent
+
         el "h1" $ dynText $ fmap tshow $ bom
         el "p" $ dynText $ fmap tshow $ bim
       return ()
@@ -89,6 +116,10 @@ buttons (nimState,player) = do
       (hoverEvent,outEvent,clickEvent) <- foldM lamb (never,never,never) (reverse $ take (fromEnum pileSize) [1..])
       return (hoverEvent,clickEvent)
     return $ both leftmost $ unzip events
+
+emptyBoard :: Board -> Bool
+emptyBoard []   = True
+emptyBoard (x:xs) = if x == 0 then emptyBoard xs else False
 
 nim :: Move -> Board -> Board
 nim _ [] = []
