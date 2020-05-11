@@ -19,9 +19,11 @@ import Reflex.Network
 import Common.Route
 
 import Control.Monad
+import Control.Monad.Trans
 import Control.Monad.Fix
 import qualified Data.Text as T
 import Data.Bits
+import Data.Time
 
 -- | (_,True) if it's the players turn
 type GameState = (Board,Bool)
@@ -55,8 +57,12 @@ frontend = Frontend
 
       -- el "h1" $ dynText $ fmap tshow $ dBool
 
+--      now <- liftIO getCurrentTime
+--      eTick <- tickLossy 3 now
+
       --if
-      let nimState = []
+      let debug = False
+
       rec
         -- understandable AI implementation:
         -- stateDyn :: Dynamic t GameState <-
@@ -66,15 +72,25 @@ frontend = Frontend
               (\_ -> "") <$ eBtn
             , (\(_, p) -> \_ -> "Game Over, You " ++ if p then "won!" else "lose") <$> eGameOver
           ]
+
         el "h1" $ dynText $ fmap T.pack gameText
 
         let eStateUpdate = updated stateDyn
-        let eGameOver = ffilter(emptyBoard . fst) eStateUpdate
+        let eGameOver    = ffilter (emptyBoard . fst) eStateUpdate
+        let ePlayerMoved = ffilter (not . snd) eStateUpdate
+        let eDrNimMoved  = ffilter (snd) eStateUpdate
+
+--        eDrNimMove   <-
+--              switchHold never . leftmost $ [
+--                eTick <$ ePlayerMoved
+--              , never <$ eStateUpdate
+--              ]
 
         stateDyn :: Dynamic t GameState <-
-          foldDyn ($) (nimState, True) . mergeWith (.) $ [
-            fmap (\m (b,p) -> (\bo -> (bo, not p)) $ nim m b) clickEvent
-            , (\_ -> (reverse [1..6], True)) <$ eBtn
+          foldDyn ($) ([], True) . mergeWith (.) $ [
+            fmap (\m (b,p) -> (nim m b, not p)) clickEvent
+            --, fmap (\_ (b,p) -> (nim (bestMove b) b, not p)) eDrNimMove
+            , (\_ -> (reverse [1..5], True)) <$ eBtn
           ]
 
         huh :: Event t (Event t Move, Event t Move) <- networkView $ buttons <$> stateDyn
@@ -83,10 +99,17 @@ frontend = Frontend
         bom <- holdDyn (0,0) $ clickEvent
         bim <- holdDyn (0,0) $ hoverEvent
 
-        el "h1" $ dynText $ fmap tshow $ bom
-        el "p" $ dynText $ fmap tshow $ bim
+        if debug then do
+          el "h1" $ dynText $ fmap tshow $ bom
+          el "p" $ dynText $ fmap tshow $ bim
+        else do return ()
       return ()
   }
+
+-- ticker :: () => NominalDiffTime -> Event t TickInfo
+-- ticker time = do
+--   now <- liftIO getCurrentTime
+--   return (tickLossy time now)
 
 buttons ::
   ( DomBuilder t m
