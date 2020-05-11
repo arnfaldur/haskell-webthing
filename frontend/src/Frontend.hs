@@ -42,7 +42,9 @@ frontend = Frontend
 
       el "h1"  $ text "Welcome to Nim"
 
-      elAttr "p" ("margin" =: "40px") $ text "Try to beat Dr. Nim, the master of all nimians."
+      el "div" $ do
+          el "p" $ text "Try to beat Dr. Nim, the master of all nimians."
+          el "p" $ text "Win by forcing your opponent to take the last bead."
 
       --eBtn <- button "Start"
       (elBtn, _) <- elAttr' "button" ("class" =: "button") $ text "Start"
@@ -62,18 +64,20 @@ frontend = Frontend
         gameText <-
           foldDyn ($) "" . mergeWith (.) $ [
               (\_ -> "") <$ eBtn
-            , (\_ -> "Game Over") <$ ffilter (emptyBoard . fst) eStateUpdate
+            , (\(_, p) -> \_ -> "Game Over, You " ++ if p then "won!" else "lose") <$> eGameOver
           ]
-        el "h1" $ dynText $ fmap tshow $ gameText
+        el "h1" $ dynText $ fmap T.pack gameText
+
+        let eStateUpdate = updated stateDyn
+        let eGameOver = ffilter(emptyBoard . fst) eStateUpdate
 
         stateDyn :: Dynamic t GameState <-
           foldDyn ($) (nimState, True) . mergeWith (.) $ [
             fmap (\m (b,p) -> (\bo -> (bo, not p)) $ nim m b) clickEvent
             , (\_ -> (reverse [1..6], True)) <$ eBtn
           ]
-        let eStateUpdate = updated stateDyn
-        let wha = buttons <$> stateDyn
-        huh :: Event t (Event t Move, Event t Move) <- networkView wha
+
+        huh :: Event t (Event t Move, Event t Move) <- networkView $ buttons <$> stateDyn
         hoverEvent :: Event t Move <- switchHold never $ fst <$> huh
         clickEvent :: Event t Move <- switchHold never $ snd <$> huh
         bom <- holdDyn (0,0) $ clickEvent
