@@ -13,6 +13,7 @@ body {
     margin: 0.15em 0.1em;
     width: 1.6em;
     height: 1.6em;
+    transition-duration: 100ms;
 }
 
 .number {

@@ -19,6 +19,7 @@ import Reflex.Network
 import Common.Route
 
 import Control.Monad
+import Control.Monad.Fix
 import qualified Data.Text as T
 import Data.Bits
 
@@ -40,29 +41,41 @@ frontend = Frontend
   , _frontend_body = do
       let nimState = reverse [1..6]
       rec
-        stateDyn :: Dynamic t GameState <- foldDyn (\m (b,p) -> (\bo -> (nim (bestMove bo) bo, not p)) $ nim m b) (nimState,True) evt
+        stateDyn :: Dynamic t GameState <-
+          foldDyn (\m (b,p) -> (\bo -> (nim (bestMove bo) bo, not p)) $ nim m b) (nimState,True) clickEvent
         let wha = buttons <$> stateDyn
-        huh :: Event t (Event t Move) <- networkView wha
-        evt :: Event t Move <- switchHold never huh
-        bom <- holdDyn (0,0) evt
+        huh :: Event t (Event t Move, Event t Move) <- networkView wha
+        hoverEvent :: Event t Move <- switchHold never $ fst <$> huh
+        clickEvent :: Event t Move <- switchHold never $ snd <$> huh
+        bom <- holdDyn (0,0) $ clickEvent
+        bim <- holdDyn (0,0) $ hoverEvent
         el "h1" $ dynText $ fmap tshow $ bom
-        el "p" $ dynText $ fmap (tshow . getAllMoves . fst) stateDyn
+        el "p" $ dynText $ fmap tshow $ bim
       return ()
   }
 
 buttons ::
   ( DomBuilder t m
-  , PostBuild t m) => GameState -> m (Event t Move)
+  , PostBuild t m
+  , MonadHold t m
+  , MonadFix m ) => GameState -> m (Event t Move, Event t Move)
 buttons (nimState,player) = do
-    events :: [Event t Move] <- forM (zip [0..] nimState)
+    events <- forM (zip [0..] nimState)
       $ \(pile, pileSize) -> divClass "row" $ do
-      events <- forM (reverse $ take (fromEnum pileSize) [1..]) $ \bead -> do
+      innerEvents <- forM (reverse $ take (fromEnum pileSize) [1..]) $ \bead -> do
         let move = (pile, bead)
-        (btn,_) <- elAttr' "button" ("class" =: "button") $ text "+"
-        return $ (move <$ domEvent Click btn)
-        
-      return $ leftmost events
-    return $ leftmost events
+        let buttonAttrs = ("class" =: "button")
+        rec
+          let hoverAttrs = (buttonAttrs <> ("style" =: "background-color:tomato")) <$ hoverEvent
+          let outAttrs = buttonAttrs <$ outEvent
+          dynAttrs <- holdDyn buttonAttrs $ hoverAttrs <> outAttrs
+          let (hoverEvent, clickEvent, outEvent) = ( domEvent Mouseover btn
+                                                   , domEvent Click btn
+                                                   , domEvent Mouseout btn)
+          (btn,_) <- elDynAttr' "button" dynAttrs $ text "+"
+        return $ both (move <$) (hoverEvent, clickEvent)
+      return $ both leftmost $ unzip innerEvents
+    return $ both leftmost $ unzip events
 
 nim :: Move -> Board -> Board
 nim _ [] = []
@@ -83,3 +96,6 @@ bestMove board = case goodMoves of
 
 tshow :: (Show a) => a -> T.Text
 tshow = T.pack . show
+
+both :: (a -> b) -> (a,a) -> (b,b)
+both f (a,b) = (f a, f b)
