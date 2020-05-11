@@ -41,8 +41,11 @@ frontend = Frontend
   , _frontend_body = do
       let nimState = reverse [1..6]
       rec
+        -- understandable AI implementation:
+        -- stateDyn :: Dynamic t GameState <-
+        --   foldDyn (\m (b,p) -> (\bo -> (nim (bestMove bo) bo, not p)) $ nim m b) (nimState,True) clickEvent
         stateDyn :: Dynamic t GameState <-
-          foldDyn (\m (b,p) -> (\bo -> (nim (bestMove bo) bo, not p)) $ nim m b) (nimState,True) clickEvent
+          foldDyn (\m (b,p) -> (\bo -> (bo, not p)) $ nim m b) (nimState,True) clickEvent
         let wha = buttons <$> stateDyn
         huh :: Event t (Event t Move, Event t Move) <- networkView wha
         hoverEvent :: Event t Move <- switchHold never $ fst <$> huh
@@ -58,23 +61,33 @@ buttons ::
   ( DomBuilder t m
   , PostBuild t m
   , MonadHold t m
-  , MonadFix m ) => GameState -> m (Event t Move, Event t Move)
+  , MonadFix m) => GameState -> m (Event t Move, Event t Move)
 buttons (nimState,player) = do
-    events <- forM (zip [0..] nimState)
-      $ \(pile, pileSize) -> divClass "row" $ do
-      innerEvents <- forM (reverse $ take (fromEnum pileSize) [1..]) $ \bead -> do
-        let move = (pile, bead)
-        let buttonAttrs = ("class" =: "button")
-        rec
-          let hoverAttrs = (buttonAttrs <> ("style" =: "background-color:tomato")) <$ hoverEvent
-          let outAttrs = buttonAttrs <$ outEvent
-          dynAttrs <- holdDyn buttonAttrs $ hoverAttrs <> outAttrs
-          let (hoverEvent, clickEvent, outEvent) = ( domEvent Mouseover btn
-                                                   , domEvent Click btn
-                                                   , domEvent Mouseout btn)
-          (btn,_) <- elDynAttr' "button" dynAttrs $ text "+"
-        return $ both (move <$) (hoverEvent, clickEvent)
-      return $ both leftmost $ unzip innerEvents
+    events <- forM (zip [0..] nimState) $ \(pile, pileSize) -> divClass "row" $ do
+      let lamb = (
+            \(accHover, accOut, accClick) bead -> do
+              let move = (pile, bead)
+              let buttonAttrs = ("class" =: "button")
+              rec
+                let hoverAttrs = (buttonAttrs <> ("style" =: "background-color:tomato")) <$ (leftmost [hoverEvent, () <$ accHover])
+                let outAttrs = buttonAttrs <$ (leftmost [outEvent, () <$ accOut])
+                dynAttrs <- holdDyn buttonAttrs $ hoverAttrs <> outAttrs
+                let ( hoverEvent
+                      , outEvent
+                      , clickEvent
+                      ) = ( domEvent Mouseover btn
+                          , domEvent Mouseout btn
+                          , domEvent Click btn
+                          )
+                (btn,_) <- elDynAttr' "button" dynAttrs $ text "+"
+              let (finalHover,finalOut,finalClick) = bother (move <$) (hoverEvent, outEvent, clickEvent)
+              return $ ( leftmost [accHover, finalHover]
+                       , leftmost [accOut, finalOut]
+                       , leftmost [accClick, finalClick]
+                       )
+                 )
+      (hoverEvent,outEvent,clickEvent) <- foldM lamb (never,never,never) (reverse $ take (fromEnum pileSize) [1..])
+      return (hoverEvent,clickEvent)
     return $ both leftmost $ unzip events
 
 nim :: Move -> Board -> Board
@@ -99,3 +112,6 @@ tshow = T.pack . show
 
 both :: (a -> b) -> (a,a) -> (b,b)
 both f (a,b) = (f a, f b)
+
+bother :: (a -> b) -> (a,a,a) -> (b,b,b)
+bother f (a,b,c) = (f a, f b, f c)
