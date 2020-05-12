@@ -18,6 +18,8 @@ import Reflex.Network
 
 import Common.Route
 
+import System.Random
+
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Fix
@@ -46,14 +48,13 @@ frontend = Frontend
                      <> "type" =: "text/css"
                      <> "rel" =: "stylesheet") blank
   , _frontend_body = do
+    prerender_ (return ()) $ do
 
       el "h1"  $ text "Welcome to Nim"
 
       el "div" $ do
           el "p" $ text "Try to beat Dr. Nim, the master of all nimians."
           el "p" $ text "Win by taking the last bead."
-
-      --eBtn <- button "Start"
 
       let buttonAttrs = ("class" =: "button")
       rec
@@ -67,21 +68,12 @@ frontend = Frontend
 
         let eBtn = domEvent Click elBtn
 
-        dBool <- toggle False (domEvent Click elBtn)
+        now <- liftIO getCurrentTime
+        eTick <- tickLossy 1 now
+        dClock <- clockLossy 0.3 now
 
-      -- el "h1" $ dynText $ fmap tshow $ dBool
-
-        eTick <- fmap (switch . current) $ prerender (return never) $ do
-          now <- liftIO getCurrentTime
-          eTick <- tickLossy 1 now
-          return eTick
-
-      --if
         let debug = False
 
-        -- understandable AI implementation:
-        -- dState :: Dynamic t GameState <-
-        -- foldDyn (\m (b,p) -> (\bo -> (nim (bestMove bo) bo, not p)) $ nim m b) (nimState,True) eBeadClick
         gameText <-
           foldDyn ($) "" . mergeWith (.) $ [
               (\_ -> "") <$ eBtn
@@ -96,7 +88,8 @@ frontend = Frontend
         let eDrNimMoved  = ffilter (\p -> User == snd p) eStateUpdate
 
         eDrNimMove <-
-             switchHold never $ leftmost [ eTick <$ ePlayerMoved
+             switchHold never $ leftmost [ never <$ eGameOver
+                                         , eTick <$ ePlayerMoved
                                          , never <$ eStateUpdate
                                          ]
         ePlayerMove <-
@@ -104,9 +97,14 @@ frontend = Frontend
                                          , never <$ eStateUpdate
                                          ]
 
+        bubibu <- sample $ current dClock
+        el "h1" $ dynText $ constDyn $ tshow $ (_tickinfo_n $ bubibu) :: Integer
+
         dState :: Dynamic t GameState <-
           foldDyn ($) ([], User) . mergeWith (.) $ [ fmap (\m (b,p) -> (nim m b, other p)) ePlayerMove
-                                                   , fmap (\_ (b,p) -> (nim (bestMove b) b, other p)) eDrNimMove
+                                                   , fmap (\_ (b,p) -> (nim (bestMove b
+                                                                             (fromEnum $ _tickInfo_n bubibu)
+                                                                            ) b, other p)) eDrNimMove
                                                    , (\_ -> (reverse [1..5], User)) <$ eBtn
                                                    ]
 
@@ -175,9 +173,9 @@ getAllMoves :: Board -> [Move]
 getAllMoves board = [(pile,bead) | (pile,beads) <- zip [0..] board, bead <- [1..beads]]
 
 
-bestMove :: Board -> Move
-bestMove board = case goodMoves of
-                      [] -> head moves
+bestMove :: Board -> Int -> Move
+bestMove board seed = case goodMoves of
+                      [] -> moves !! (fst $ randomR (0, length moves) (mkStdGen seed))
                       (x:_) -> x
   where moves = getAllMoves board
         goodMoves = filter (\x -> (foldr xor 0 (nim x board))==0) moves
@@ -187,3 +185,6 @@ tshow = T.pack . show
 
 both :: (a -> b) -> (a,a) -> (b,b)
 both f (a,b) = (f a, f b)
+
+kindaRandom :: Int -> Int
+kindaRandom n = (n * 6011 + 7307) `mod` n
