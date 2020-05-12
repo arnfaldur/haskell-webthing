@@ -70,14 +70,20 @@ frontend = Frontend
 
         now <- liftIO getCurrentTime
         eTick <- tickLossy 1 now
-        dClock <- clockLossy 0.3 now
+        -- dClock <- clockLossy 0.3 now
+        rng <- liftIO newStdGen
+
+        fifi <- holdDyn "badboi" $ fmap tshow (rng <$ eTick)
+        el "h1" $ dynText $ fifi
+        fofi <- holdDyn "goodboi" $ fmap tshow eTick
+        el "h1" $ dynText $ fofi
 
         let debug = False
 
         gameText <-
           foldDyn ($) "" . mergeWith (.) $ [
               (\_ -> "") <$ eBtn
-            , (\(_, p) -> \_ -> "Game Over, You " ++ if p == User then "have been nimed" else "are the nimest!") <$> eGameOver
+            , (\(_, p) -> \_ -> "Game Over, You " ++ if p == User then "lost" else "won!") <$> eGameOver
           ]
 
         el "h1" $ dynText $ fmap T.pack gameText
@@ -97,14 +103,10 @@ frontend = Frontend
                                          , never <$ eStateUpdate
                                          ]
 
-        bubibu <- sample $ current dClock
-        el "h1" $ dynText $ constDyn $ tshow $ (_tickinfo_n $ bubibu) :: Integer
 
         dState :: Dynamic t GameState <-
           foldDyn ($) ([], User) . mergeWith (.) $ [ fmap (\m (b,p) -> (nim m b, other p)) ePlayerMove
-                                                   , fmap (\_ (b,p) -> (nim (bestMove b
-                                                                             (fromEnum $ _tickInfo_n bubibu)
-                                                                            ) b, other p)) eDrNimMove
+                                                   , fmap (\_ (b,p) -> (nim (bestMove b rng) b, other p)) eDrNimMove
                                                    , (\_ -> (reverse [1..5], User)) <$ eBtn
                                                    ]
 
@@ -173,9 +175,9 @@ getAllMoves :: Board -> [Move]
 getAllMoves board = [(pile,bead) | (pile,beads) <- zip [0..] board, bead <- [1..beads]]
 
 
-bestMove :: Board -> Int -> Move
-bestMove board seed = case goodMoves of
-                      [] -> moves !! (fst $ randomR (0, length moves) (mkStdGen seed))
+bestMove :: Board -> StdGen -> Move
+bestMove board rng = case goodMoves of
+                      [] -> moves !! (fst $ randomR (0, length moves - 1) rng)
                       (x:_) -> x
   where moves = getAllMoves board
         goodMoves = filter (\x -> (foldr xor 0 (nim x board))==0) moves
