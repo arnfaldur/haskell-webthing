@@ -50,6 +50,7 @@ frontend = Frontend
                      <> "rel" =: "stylesheet") blank
   , _frontend_body = prerender_ (return ()) $ do
       -- nimWidget
+      let functorPrice = 10
       rec
         el "h1" $ text "Monadclicker"
         el "p"  $ text "Click the monad, buy more advanced concepts to become the endofunctorial master."
@@ -58,10 +59,10 @@ frontend = Frontend
         eTick <- tickLossy 0.5 now
 
         dNumFunctors      <- foldDyn ($) 0 $ (+1) <$ eFunctorPurchase
-        dCanAffordFunctor <- holdDyn False ((>10) <$> eMonadsUpdate)
+        dCanAffordFunctor <- holdDyn False ((>functorPrice) <$> eMonadsUpdate)
 
-        eFunctorPurchase  <- switchHold never $ leftmost [ eFunctorButtonClick <$ ffilter (>=10) eMonadsUpdate
-                                                         , never               <$ ffilter (<10) eMonadsUpdate
+        eFunctorPurchase  <- switchHold never $ leftmost [ eFunctorButtonClick <$ ffilter (>=functorPrice) eMonadsUpdate
+                                                         , never               <$ ffilter (< functorPrice) eMonadsUpdate
                                                          ]
 
         let eFunctorButtonClick = domEvent Click elFunctorButton
@@ -72,7 +73,7 @@ frontend = Frontend
 
         dMonads <- foldDyn ($) 0 . mergeWith (.) $
           [ (+1)  <$ eMonadBtnClick
-          , (+ (-10)) <$ eFunctorPurchase
+          , (+ (-functorPrice)) <$ eFunctorPurchase
           , (\funcs val -> val + funcs) <$> ffilter (>0)(tagPromptlyDyn dNumFunctors eTick)
           ]
 
