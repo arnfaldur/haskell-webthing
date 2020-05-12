@@ -11,6 +11,7 @@ module Frontend where
 
 import Obelisk.Frontend
 import Obelisk.Route
+import Obelisk.Route.Frontend
 import Obelisk.Generated.Static
 
 import Reflex.Dom
@@ -47,8 +48,58 @@ frontend = Frontend
       elAttr "link" ("href" =: static @"main.css"
                      <> "type" =: "text/css"
                      <> "rel" =: "stylesheet") blank
-  , _frontend_body = do
-    prerender_ (return ()) $ do
+  , _frontend_body = prerender_ (return ()) $ do
+      -- nimWidget
+      rec
+        el "h1" $ text "Monadclicker"
+        el "p"  $ text "Click the monad, buy more advanced concepts to become the endofunctorial master."
+
+        now <- liftIO getCurrentTime
+        eTick <- tickLossy 0.5 now
+
+        dNumFunctors      <- foldDyn ($) 0 $ (+1) <$ eFunctorPurchase
+        dCanAffordFunctor <- holdDyn False ((>10) <$> eMonadsUpdate)
+
+        eFunctorPurchase  <- switchHold never $ leftmost [ eFunctorButtonClick <$ ffilter (>=10) eMonadsUpdate
+                                                         , never               <$ ffilter (<10) eMonadsUpdate
+                                                         ]
+
+        let eFunctorButtonClick = domEvent Click elFunctorButton
+        let eMonadBtnClick      = domEvent Click elMonadBtn
+
+        let eMonadsUpdate       = updated dMonads
+        let eNumFunctorsUpdate  = updated dNumFunctors
+
+        dMonads <- foldDyn ($) 0 . mergeWith (.) $
+          [ (+1)  <$ eMonadBtnClick
+          , (+ (-10)) <$ eFunctorPurchase
+          , (\funcs val -> val + funcs) <$> ffilter (>0)(tagPromptlyDyn dNumFunctors eTick)
+          ]
+
+        dButtonText <- holdDyn ("Get Monads") $ (\n -> T.pack (show n ++ " Monads")) <$> eMonadsUpdate
+
+        (elMonadBtn, _) <- elAttr' "button" ("class" =: "button big") $ dynText dButtonText
+
+        elFunctorButton <- el "div" $ do
+            el "t" $ text "Functor => (+2 Ms/s) : 10 Ms \t"
+            (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText (tshow <$> dNumFunctors)
+            return elBtn
+
+      return ()
+  }
+
+nimWidget :: (
+  PerformEvent t m,
+  TriggerEvent t m,
+  MonadIO m,
+  MonadIO (Performable m),
+  MonadHold t m,
+  MonadFix m,
+  DomBuilder t m ,
+  Routed t (R FrontendRoute) m ,
+  PostBuild t m
+  ) => m ()
+nimWidget = do
 
       el "h1"  $ text "Welcome to Nim"
 
@@ -121,12 +172,6 @@ frontend = Frontend
           el "p" $ dynText $ fmap tshow $ bim
         else do return ()
       return ()
-  }
-
--- ticker :: () => NominalDiffTime -> Event t TickInfo
--- ticker time = do
---   now <- liftIO getCurrentTime
---   return (tickLossy time now)
 
 buttons ::
   ( DomBuilder t m

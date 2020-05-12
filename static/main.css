@@ -19,6 +19,11 @@ body {
     outline: none;
 }
 
+.button.big {
+    width: 15em;
+    height: 15em;
+}
+
 .number {
     margin: 10% 20%;
     font-size: large;
