@@ -55,18 +55,68 @@ frontend = Frontend
       let eMonadClick = domEvent Click elMonadBtn
       let eNimClick   = domEvent Click elNimBtn
 
-      dMonadGame <- holdDyn True $ leftmost [True <$ eMonadClick, False <$ eNimClick]
+      widgetHold_ monadClickerWidget (leftmost [monadClickerWidget <$ eMonadClick, nimWidget <$ eNimClick])
+      -- eMonadOrNim <- leftmost [monadClickerWidget <$ eMonadClick, nimWidget <$ eNimClick]
+      -- dMonadGame <- holdDyn monadClickerWidget $ eMonadOrNim
 
       -- el "h1" $ dynText $ tshow <$> dMonadGame
 
-      monadGame <- sample $ current $ dMonadGame
-      if monadGame then
-        monadClickerWidget
-      else
-        nimWidget
 
       return ()
   }
+
+--funMaker :: (DomBuilder t m) => Int
+funMaker :: (DomBuilder t m, PostBuild t m, Ord a1, Num a2,
+                   Show a3, Show a1, Show a2, MonadHold t m, MonadFix m, Num a1) =>
+  String
+                  -> Dynamic t a2
+                  -> Event t a1
+                  -> a1
+                  -> Event t b
+                  -> a3
+                  -> m (Event t (a1 -> a1), Dynamic t a2)
+funMaker name dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
+  rec
+    eFunctorPurchase  <- switchHold never $
+                         leftmost [ eFunctorButtonClick <$ ffilter (>=functorPrice) eMonadsUpdate
+                                  , never               <$ ffilter (< functorPrice) eMonadsUpdate
+                                  ]
+    dNumFunctors <- foldDyn ($) 0 . mergeWith (.) $
+                    [ (+1) <$ eFunctorPurchase
+                    , (\x y -> x + y) <$> (tagPromptlyDyn dNumMetaFunctors eTick)
+                    ]
+    let eFunctorCost = (+ (-functorPrice)) <$ eFunctorPurchase
+
+    elFunctorButton <- el "div" $ do
+      el "t" $ text $ T.pack $ name
+        ++ " => (+"
+        ++ (show tickerHz)
+        ++ " Ms/s) : "
+        ++ (show functorPrice)
+        ++ " Ms \t"
+      (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText (tshow <$> dNumFunctors)
+      return elBtn
+    let eFunctorButtonClick         = domEvent Click elFunctorButton
+  return (eFunctorCost,dNumFunctors)
+
+-- metaFunctorButtons :: ( DomBuilder t1 m, PostBuild t1 m, Show a2, Num t2, Num a2,
+--            Eq t2, MonadHold t1 m, MonadFix m, Ord a1, Show a3, Show a1,
+--            Num a1) =>
+--          t2 -> Int -> Event t1 a1 -> Event t1 b -> a3 -> (Int -> a1) -> m ([Event t1 (a1 -> a1)], Dynamic t1 a2)
+metaFunctorButtons metaness eMonadsUpdate eTick tickerHz priceOf = inner 0
+  where inner n = do
+          rec
+            (eCost,dNum) <- (funMaker
+                             ((foldr (++) "" $ take n $ repeat "Meta") ++ "Functor")
+                             (dNumMetaer)
+                             eMonadsUpdate
+                             (priceOf n)
+                             eTick
+                             tickerHz)
+            (eCosts,dNumMetaer) <- (if n == metaness
+                                    then return ([], constDyn 0)
+                                    else inner (n+1))
+          return ((eCost:eCosts), dNum)
 
 monadClickerWidget ::(
   PerformEvent t m,
@@ -80,8 +130,10 @@ monadClickerWidget ::(
   PostBuild t m
   ) => m ()
 monadClickerWidget = do
-      let functorPrice     = 10
-      let metaFunctorPrice = 50000
+      let functorPrice         = 6
+      let multiplier = 23
+      let metaFunctorPrice     = functorPrice * multiplier
+      let metaMetaFunctorPrice = metaFunctorPrice * multiplier
       let tickerHz         = 2
       rec
         el "h1" $ text "Monadclicker"
@@ -90,47 +142,22 @@ monadClickerWidget = do
         now <- liftIO getCurrentTime
         eTick <- tickLossy (1 / tickerHz) now
 
-        dNumFunctors      <- foldDyn ($) 0 . mergeWith (.) $ [ (+1) <$ eFunctorPurchase
-                                                             , (\x y -> x + y) <$> (tagPromptlyDyn dNumMetaFunctors eTick)
-                                                             ]
-        dNumMetaFunctors  <- foldDyn ($) 0 $ (+1) <$ eMetaFunctorPurchase
-        dCanAffordFunctor <- holdDyn False ((>functorPrice) <$> eMonadsUpdate)
-
-        eFunctorPurchase  <- switchHold never $ leftmost [ eFunctorButtonClick <$ ffilter (>=functorPrice) eMonadsUpdate
-                                                         , never               <$ ffilter (< functorPrice) eMonadsUpdate
-                                                         ]
-
-        eMetaFunctorPurchase  <- switchHold never $ leftmost [ eMetaFunctorButtonClick <$ ffilter (>=metaFunctorPrice) eMonadsUpdate
-                                                             , never                   <$ ffilter (< metaFunctorPrice) eMonadsUpdate
-                                                             ]
-
-        let eFunctorButtonClick     = domEvent Click elFunctorButton
-        let eMetaFunctorButtonClick = domEvent Click elMetaFunctorButton
-        let eMonadBtnClick          = domEvent Click elMonadBtn
-
-        let eMonadsUpdate       = updated dMonads
-        let eNumFunctorsUpdate  = updated dNumFunctors
-
-        dMonads <- foldDyn ($) 0 . mergeWith (.) $
-          [ (+1)  <$ eMonadBtnClick
-          , (+ (-functorPrice))     <$ eFunctorPurchase
-          , (+ (-metaFunctorPrice)) <$ eMetaFunctorPurchase
-          , (\funcs val -> val + funcs) <$> ffilter (>0) (tagPromptlyDyn dNumFunctors eTick)
-          ]
-
+        -- not FUNCTOR THINGS
         dButtonText <- holdDyn ("Get Monads") $ (\n -> T.pack (show n ++ " Monads")) <$> eMonadsUpdate
 
         (elMonadBtn, _) <- elAttr' "button" ("class" =: "button big") $ dynText dButtonText
+        let eMonadBtnClick              = domEvent Click elMonadBtn
 
-        elFunctorButton <- el "div" $ do
-            el "t" $ text $ T.pack $ "Functor => (+" ++ (show tickerHz) ++ " Ms/s) : " ++ (show functorPrice) ++ " Ms \t"
-            (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText (tshow <$> dNumFunctors)
-            return elBtn
+        let priceOf metaness = functorPrice * multiplier ^ metaness
 
-        elMetaFunctorButton <- el "div" $ do
-            el "t" $ text $ T.pack $ "MetaFunctor => (+" ++ (show tickerHz) ++ " Fs/s) : " ++ (show metaFunctorPrice) ++ " Ms \t"
-            (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText (tshow <$> dNumMetaFunctors)
-            return elBtn
+        (x, dNumFunctors) <- metaFunctorButtons 80 eMonadsUpdate eTick tickerHz priceOf
+
+        -- OTHER THINGS
+        let eMonadsUpdate       = updated dMonads
+
+        dMonads <- foldDyn ($) 0 . mergeWith (.) $
+          [ succ                    <$ eMonadBtnClick] ++ x ++
+          [ (\funcs val -> val + funcs) <$> ffilter (>0) (tagPromptlyDyn dNumFunctors eTick) ]
 
       return ()
 
