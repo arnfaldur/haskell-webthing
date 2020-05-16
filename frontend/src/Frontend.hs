@@ -86,8 +86,7 @@ funMaker name dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
                     , (\x y -> x + y) <$> (tagPromptlyDyn dNumMetaFunctors eTick)
                     ]
 
-    --let fFunctorPrice = (\n -> (n + 1) * functorPrice)
-    let fFunctorPrice = (\n -> functorPrice^n)
+    let fFunctorPrice = (\n -> functorPrice * (n+1)^2)
 
     let dFunctorPrice = ffor dNumFunctors fFunctorPrice
 
@@ -137,7 +136,7 @@ monadClickerWidget ::(
   ) => m ()
 monadClickerWidget = do
       let functorPrice         = 6
-      let multiplier           = 23
+      let multiplier           = 64
       let tickerHz             = 0.5
       rec
         el "h1" $ text "Monadclicker"
