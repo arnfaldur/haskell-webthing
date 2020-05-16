@@ -80,24 +80,30 @@ funMaker name dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
                          leftmost [ eFunctorButtonClick <$ ffilter (\(a,b) -> a <= b) (attachPromptlyDyn dFunctorPrice eMonadsUpdate)
                                   , never               <$ ffilter (\(a,b) -> a >  b) (attachPromptlyDyn dFunctorPrice eMonadsUpdate)
                                   ]
+
     dNumFunctors <- foldDyn ($) 0 . mergeWith (.) $
                     [ (+1) <$ eFunctorPurchase
                     , (\x y -> x + y) <$> (tagPromptlyDyn dNumMetaFunctors eTick)
                     ]
-    let dFunctorPrice = ffor dNumFunctors (\n -> n * functorPrice)
-    let eFunctorCost  = (\x y -> y - x) <$> (tagPromptlyDyn dFunctorPrice eFunctorPurchase)
-    --let eFunctorCost = (+ (-functorPrice)) <$ eFunctorPurchase
+
+    --let fFunctorPrice = (\n -> (n + 1) * functorPrice)
+    let fFunctorPrice = (\n -> functorPrice^n)
+
+    let dFunctorPrice = ffor dNumFunctors fFunctorPrice
+
+    -- eFunctorCost evaluates dNumFunctors as having already purchased the item, so we need to subtract one.
+    let eFunctorCost  = (\x y -> y - (fFunctorPrice (x - 1))) <$> (tagPromptlyDyn dNumFunctors eFunctorPurchase)
 
     elFunctorButton <- el "div" $ do
       (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText (tshow <$> dNumFunctors)
       el "t" $ text $ T.pack $ name ++ " => (+" ++ (show tickerHz) ++ " Ms/s) : "
-      el "t" $ dynText $ (fmap tshow ((+functorPrice) <$> dFunctorPrice))
+      el "t" $ dynText $ (fmap tshow (dFunctorPrice))
       el "t" $ text " Ms \t"
       return elBtn
 
     let eFunctorButtonClick         = domEvent Click elFunctorButton
 
-  return (eFunctorCost,dNumFunctors)
+  return (eFunctorCost, dNumFunctors)
 
 --metaFunctorButtons :: ( DomBuilder t1 m, PostBuild t1 m, Show a2, Num t2, Num a2,
 --            Eq t2, MonadHold t1 m, MonadFix m, Ord a1, Show a3, Show a1,
