@@ -136,8 +136,8 @@ monadClickerWidget ::(
   ) => m ()
 monadClickerWidget = do
       let functorPrice         = 6
-      let multiplier           = 64
-      let tickerHz             = 0.5
+      let multiplier           = 64 -- Should be a function, the exponential growth overshadows this
+      let tickerHz             = 2
       rec
         el "h1" $ text "Monadclicker"
         el "p"  $ text "Click the monad, buy more advanced concepts to become the endofunctorial master."

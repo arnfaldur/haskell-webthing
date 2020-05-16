@@ -12,7 +12,8 @@ body {
     border-style: solid;
     border-color: #222;
     margin: 0.15em 0.1em;
-    width: 3em;
+    width: auto-fit;
+    min-width: 3em;
     height: 3em;
     transition-duration: 100ms;
     font-size: large;
