@@ -66,48 +66,53 @@ frontend = Frontend
   }
 
 --funMaker :: (DomBuilder t m) => Int
-funMaker :: (DomBuilder t m, PostBuild t m, Ord a1, Num a2,
-                   Show a3, Show a1, Show a2, MonadHold t m, MonadFix m, Num a1) =>
-  String
-                  -> Dynamic t a2
-                  -> Event t a1
-                  -> a1
+funMaker :: (DomBuilder t m, PostBuild t m, Show a3, MonadHold t m, MonadFix m) =>
+                  String
+                  -> Dynamic t Integer
+                  -> Event t Integer
+                  -> Integer
                   -> Event t b
                   -> a3
-                  -> m (Event t (a1 -> a1), Dynamic t a2)
+                  -> m (Event t (Integer -> Integer), Dynamic t Integer)
 funMaker name dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
   rec
     eFunctorPurchase  <- switchHold never $
-                         leftmost [ eFunctorButtonClick <$ ffilter (>=functorPrice) eMonadsUpdate
-                                  , never               <$ ffilter (< functorPrice) eMonadsUpdate
+                         leftmost [ eFunctorButtonClick <$ ffilter (\(a,b) -> a <= b) (attachPromptlyDyn dFunctorPrice eMonadsUpdate)
+                                  , never               <$ ffilter (\(a,b) -> a >  b) (attachPromptlyDyn dFunctorPrice eMonadsUpdate)
                                   ]
+
     dNumFunctors <- foldDyn ($) 0 . mergeWith (.) $
                     [ (+1) <$ eFunctorPurchase
                     , (\x y -> x + y) <$> (tagPromptlyDyn dNumMetaFunctors eTick)
                     ]
-    let eFunctorCost = (+ (-functorPrice)) <$ eFunctorPurchase
+
+    let fFunctorPrice = (\n -> functorPrice * (n+1)^2)
+
+    let dFunctorPrice = ffor dNumFunctors fFunctorPrice
+
+    -- eFunctorCost evaluates dNumFunctors as having already purchased the item, so we need to subtract one.
+    let eFunctorCost  = (\x y -> y - (fFunctorPrice (x - 1))) <$> (tagPromptlyDyn dNumFunctors eFunctorPurchase)
 
     elFunctorButton <- el "div" $ do
-      el "t" $ text $ T.pack $ name
-        ++ " => (+"
-        ++ (show tickerHz)
-        ++ " Ms/s) : "
-        ++ (show functorPrice)
-        ++ " Ms \t"
       (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText (tshow <$> dNumFunctors)
+      el "t" $ text $ T.pack $ name ++ " => (+" ++ (show tickerHz) ++ " Ms/s) : "
+      el "t" $ dynText $ (fmap tshow (dFunctorPrice))
+      el "t" $ text " Ms \t"
       return elBtn
-    let eFunctorButtonClick         = domEvent Click elFunctorButton
-  return (eFunctorCost,dNumFunctors)
 
--- metaFunctorButtons :: ( DomBuilder t1 m, PostBuild t1 m, Show a2, Num t2, Num a2,
+    let eFunctorButtonClick         = domEvent Click elFunctorButton
+
+  return (eFunctorCost, dNumFunctors)
+
+--metaFunctorButtons :: ( DomBuilder t1 m, PostBuild t1 m, Show a2, Num t2, Num a2,
 --            Eq t2, MonadHold t1 m, MonadFix m, Ord a1, Show a3, Show a1,
 --            Num a1) =>
---          t2 -> Int -> Event t1 a1 -> Event t1 b -> a3 -> (Int -> a1) -> m ([Event t1 (a1 -> a1)], Dynamic t1 a2)
+--            t2 -> Int -> Event t1 a1 -> Event t1 b -> a3 -> (Int -> a1) -> m ([Event t1 (a1 -> a1)], Dynamic t1 a2)
 metaFunctorButtons metaness eMonadsUpdate eTick tickerHz priceOf = inner 0
   where inner n = do
           rec
             (eCost,dNum) <- (funMaker
-                             ((foldr (++) "" $ take n $ repeat "Meta") ++ "Functor")
+                             ((if n > 0 then "Meta^(" ++ show n ++ ") Functor" else "Functor"))
                              (dNumMetaer)
                              eMonadsUpdate
                              (priceOf n)
@@ -131,10 +136,8 @@ monadClickerWidget ::(
   ) => m ()
 monadClickerWidget = do
       let functorPrice         = 6
-      let multiplier = 23
-      let metaFunctorPrice     = functorPrice * multiplier
-      let metaMetaFunctorPrice = metaFunctorPrice * multiplier
-      let tickerHz         = 2
+      let multiplier           = 64 -- Should be a function, the exponential growth overshadows this
+      let tickerHz             = 2
       rec
         el "h1" $ text "Monadclicker"
         el "p"  $ text "Click the monad, buy more advanced concepts to become the endofunctorial master."
