@@ -56,11 +56,6 @@ frontend = Frontend
       let eNimClick   = domEvent Click elNimBtn
 
       widgetHold_ monadClickerWidget (leftmost [monadClickerWidget <$ eMonadClick, nimWidget <$ eNimClick])
-      -- eMonadOrNim <- leftmost [monadClickerWidget <$ eMonadClick, nimWidget <$ eNimClick]
-      -- dMonadGame <- holdDyn monadClickerWidget $ eMonadOrNim
-
-      -- el "h1" $ dynText $ tshow <$> dMonadGame
-
 
       return ()
   }
@@ -142,25 +137,63 @@ monadClickerWidget = do
         el "h1" $ text "Monadclicker"
         el "p"  $ text "Click the monad, buy more advanced concepts to become the endofunctorial master."
 
-        now <- liftIO getCurrentTime
+        now   <- liftIO getCurrentTime
         eTick <- tickLossy (1 / tickerHz) now
 
-        -- not FUNCTOR THINGS
+        -- MONAD BUTTON
         dButtonText <- holdDyn ("Get Monads") $ (\n -> T.pack (show n ++ " Monads")) <$> eMonadsUpdate
 
         (elMonadBtn, _) <- elAttr' "button" ("class" =: "button big") $ dynText dButtonText
         let eMonadBtnClick              = domEvent Click elMonadBtn
 
-        let priceOf metaness = functorPrice * multiplier ^ metaness
+        (elResetBtn, _ ) <- elAttr' "button" ("class" =: "button") $ text "RESET MONADS"
+        let eResetBtnClick = domEvent Click elResetBtn
 
-        (x, dNumFunctors) <- metaFunctorButtons 80 eMonadsUpdate eTick tickerHz priceOf
+        -- CLICK FUNCTION UPGRADES
+        el "h2" $ text "Upgrade click function"
+
+        dClickFunc <- el "div" $ do
+
+          rec
+            (elBtn1, _) <- elAttr' "button" ("class" =: "button") $ dynText $ tshow <$> dNumLevel1Composers
+
+            let eBtn1Click = domEvent Click elBtn1
+            dNumLevel1Composers <- (+1) <$> (count eBtn1Click)
+
+            (elBtn2, _) <- elAttr' "button" ("class" =: "button") $ dynText $ tshow <$> dNumLevel2Composers
+
+            let eBtn2Click = domEvent Click elBtn2
+            dNumLevel2Composers <- (+1) <$> count eBtn2Click
+
+            (elBtn3, _) <- elAttr' "button" ("class" =: "button") $ dynText $ tshow <$> dNumLevel3Composers
+
+            let eBtn3Click = domEvent Click elBtn3
+            dNumLevel3Composers <- (+1) <$> count eBtn3Click
+
+            let itercomp n f = if n <= 0 then id else f . (itercomp (n-1) f)
+
+            let dComposeLevel1 = zipDynWith (\f g -> g f) (constDyn succ) (itercomp <$> dNumLevel1Composers)
+            let dComposeLevel2 = zipDynWith (\f g -> g f) dComposeLevel1  (itercomp <$> dNumLevel2Composers)
+            let dComposeLevel3 = zipDynWith (\f g -> g f) dComposeLevel2  (itercomp <$> dNumLevel3Composers)
+
+          return dComposeLevel3
+        --let dClickFunc = constDyn (+0)
+
+        -- FUNCTORLAND
+        el "h2" $ text "Functors"
+
+        let priceOf metaness = functorPrice * multiplier ^ metaness
+        (functorCostEvents, dNumFunctors) <- metaFunctorButtons 18 eMonadsUpdate eTick tickerHz priceOf
 
         -- OTHER THINGS
-        let eMonadsUpdate       = updated dMonads
+        let eMonadsUpdate = updated dMonads
 
         dMonads <- foldDyn ($) 0 . mergeWith (.) $
-          [ succ                    <$ eMonadBtnClick] ++ x ++
-          [ (\funcs val -> val + funcs) <$> ffilter (>0) (tagPromptlyDyn dNumFunctors eTick) ]
+          functorCostEvents ++
+          [ (const 0) <$ eResetBtnClick
+          , tagPromptlyDyn dClickFunc eMonadBtnClick
+          , (\funcs val -> val + funcs) <$> ffilter (>0) (tagPromptlyDyn dNumFunctors eTick)
+          ]
 
       return ()
 
@@ -199,11 +232,6 @@ nimWidget = do
         eTick <- tickLossy 1 now
         -- dClock <- clockLossy 0.3 now
         rng <- liftIO newStdGen
-
-        fifi <- holdDyn "badboi" $ fmap tshow (rng <$ eTick)
-        el "h1" $ dynText $ fifi
-        fofi <- holdDyn "goodboi" $ fmap tshow eTick
-        el "h1" $ dynText $ fofi
 
         let debug = False
 
@@ -309,5 +337,3 @@ tshow = T.pack . show
 both :: (a -> b) -> (a,a) -> (b,b)
 both f (a,b) = (f a, f b)
 
-kindaRandom :: Int -> Int
-kindaRandom n = (n * 6011 + 7307) `mod` n
