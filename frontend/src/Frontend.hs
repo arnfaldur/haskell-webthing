@@ -60,16 +60,16 @@ frontend = Frontend
       return ()
   }
 
---funMaker :: (DomBuilder t m) => Int
-funMaker :: (DomBuilder t m, PostBuild t m, Show a3, MonadHold t m, MonadFix m) =>
-                  String
+--functorConstructor :: (DomBuilder t m) => Int
+functorConstructor :: (DomBuilder t m, PostBuild t m, Show a3, MonadHold t m, MonadFix m) =>
+                  Integer
                   -> Dynamic t Integer
                   -> Event t Integer
                   -> Integer
                   -> Event t b
                   -> a3
                   -> m (Event t (Integer -> Integer), Dynamic t Integer)
-funMaker name dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
+functorConstructor metaness dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
   rec
     eFunctorPurchase  <- switchHold never $
                          leftmost [ eFunctorButtonClick <$ ffilter (\(a,b) -> a <= b) (attachPromptlyDyn dFunctorPrice eMonadsUpdate)
@@ -85,8 +85,12 @@ funMaker name dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
 
     let dFunctorPrice = ffor dNumFunctors fFunctorPrice
 
-    -- eFunctorCost evaluates dNumFunctors as having already purchased the item, so we need to subtract one.
+    --  eFunctorCost evaluates dNumFunctors as having already purchased the item, so we need to subtract one.
     let eFunctorCost  = (\x y -> y - (fFunctorPrice (x - 1))) <$> (tagPromptlyDyn dNumFunctors eFunctorPurchase)
+
+    let name = if metaness > 0 then
+          "Meta" ++ (if metaness > 1 then "^" ++ (show metaness) else "") ++ " Functor"
+          else "Functor"
 
     elFunctorButton <- el "div" $ do
       (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText (tshow <$> dNumFunctors)
@@ -95,7 +99,7 @@ funMaker name dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
       el "t" $ text " Ms \t"
       return elBtn
 
-    let eFunctorButtonClick         = domEvent Click elFunctorButton
+    let eFunctorButtonClick = domEvent Click elFunctorButton
 
   return (eFunctorCost, dNumFunctors)
 
@@ -106,8 +110,8 @@ funMaker name dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
 metaFunctorButtons metaness eMonadsUpdate eTick tickerHz priceOf = inner 0
   where inner n = do
           rec
-            (eCost,dNum) <- (funMaker
-                             ((if n > 0 then "Meta^(" ++ show n ++ ") Functor" else "Functor"))
+            (eCost,dNum) <- (functorConstructor
+                             n
                              (dNumMetaer)
                              eMonadsUpdate
                              (priceOf n)
@@ -144,7 +148,7 @@ monadClickerWidget = do
         dButtonText <- holdDyn ("Get Monads") $ (\n -> T.pack (show n ++ " Monads")) <$> eMonadsUpdate
 
         (elMonadBtn, _) <- elAttr' "button" ("class" =: "button big") $ dynText dButtonText
-        let eMonadBtnClick              = domEvent Click elMonadBtn
+        let eMonadBtnClick = domEvent Click elMonadBtn
 
         (elResetBtn, _ ) <- elAttr' "button" ("class" =: "button") $ text "RESET MONADS"
         let eResetBtnClick = domEvent Click elResetBtn
