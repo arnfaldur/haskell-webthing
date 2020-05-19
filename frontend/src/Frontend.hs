@@ -25,6 +25,7 @@ import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Fix
 import qualified Data.Text as T
+import Data.Bool
 import Data.Bits
 import Data.Time
 
@@ -60,7 +61,6 @@ frontend = Frontend
       return ()
   }
 
---functorConstructor :: (DomBuilder t m) => Int
 functorConstructor :: (DomBuilder t m, PostBuild t m, Show a3, MonadHold t m, MonadFix m) =>
                   Integer
                   -> Dynamic t Integer
@@ -71,9 +71,12 @@ functorConstructor :: (DomBuilder t m, PostBuild t m, Show a3, MonadHold t m, Mo
                   -> m (Event t (Integer -> Integer), Dynamic t Integer)
 functorConstructor metaness dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
   rec
+    dCanAffordSpam <- holdDyn False ((\(a,b) -> a <= b) <$> (attachPromptlyDyn dFunctorPrice eMonadsUpdate))
+    dCanAfford <- holdUniqDyn dCanAffordSpam
+    let eCanAfford = updated dCanAfford
     eFunctorPurchase  <- switchHold never $
-                         leftmost [ eFunctorButtonClick <$ ffilter (\(a,b) -> a <= b) (attachPromptlyDyn dFunctorPrice eMonadsUpdate)
-                                  , never               <$ ffilter (\(a,b) -> a >  b) (attachPromptlyDyn dFunctorPrice eMonadsUpdate)
+                         leftmost [ eFunctorButtonClick <$ ffilter id eCanAfford
+                                  , never               <$ ffilter not eCanAfford
                                   ]
 
     dNumFunctors <- foldDyn ($) 0 . mergeWith (.) $
@@ -81,6 +84,7 @@ functorConstructor metaness dNumMetaFunctors eMonadsUpdate functorPrice eTick ti
                     , (\x y -> x + y) <$> (tagPromptlyDyn dNumMetaFunctors eTick)
                     ]
 
+    -- let fFunctorPrice = (\n -> functorPrice * (n+1)^2)
     let fFunctorPrice = (\n -> functorPrice * (n+1)^2)
 
     let dFunctorPrice = ffor dNumFunctors fFunctorPrice
@@ -93,7 +97,8 @@ functorConstructor metaness dNumMetaFunctors eMonadsUpdate functorPrice eTick ti
           else "Functor"
 
     elFunctorButton <- el "div" $ do
-      (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText (tshow <$> dNumFunctors)
+      let buttonAttrs = fmap (("class" =:) . bool "button disabled" "button") dCanAfford
+      (elBtn, _) <- elDynAttr' "button" buttonAttrs $ dynText (tshow <$> dNumFunctors)
       el "t" $ text $ T.pack $ name ++ " => (+" ++ (show tickerHz) ++ " Ms/s) : "
       el "t" $ dynText $ (fmap tshow (dFunctorPrice))
       el "t" $ text " Ms \t"
@@ -121,6 +126,27 @@ metaFunctorButtons metaness eMonadsUpdate eTick tickerHz priceOf = inner 0
                                     then return ([], constDyn 0)
                                     else inner (n+1))
           return ((eCost:eCosts), dNum)
+
+
+itercomp n f = if n <= 0 then id else f . (itercomp (n-1) f)
+
+--clickFunctionUpgrades :: (
+--  DomBuilder t m,
+--  PostBuild t m,
+--  MonadHold t m,
+--  MonadFix m
+--  ) => Integer -> Dynamic t (Integer -> Integer) -> m (Dynamic t (Integer -> Integer))
+clickFunctionUpgrades n dFunc | n <= 0 = do
+                                  return dFunc
+                              | otherwise = do
+                                rec
+                                  (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText $ tshow <$> dNumComposers
+                                  let eBtnClick = domEvent Click elBtn
+                                  dNumComposers <- (+1) <$> (count eBtnClick)
+                                  let dComposeLevel = zipDynWith (\f g -> g f) dFunc (itercomp <$> dNumComposers)
+                                  retFunc <- clickFunctionUpgrades (n-1) dComposeLevel
+                                return retFunc
+
 
 monadClickerWidget ::(
   PerformEvent t m,
@@ -156,32 +182,7 @@ monadClickerWidget = do
         -- CLICK FUNCTION UPGRADES
         el "h2" $ text "Upgrade click function"
 
-        dClickFunc <- el "div" $ do
-
-          rec
-            (elBtn1, _) <- elAttr' "button" ("class" =: "button") $ dynText $ tshow <$> dNumLevel1Composers
-
-            let eBtn1Click = domEvent Click elBtn1
-            dNumLevel1Composers <- (+1) <$> (count eBtn1Click)
-
-            (elBtn2, _) <- elAttr' "button" ("class" =: "button") $ dynText $ tshow <$> dNumLevel2Composers
-
-            let eBtn2Click = domEvent Click elBtn2
-            dNumLevel2Composers <- (+1) <$> count eBtn2Click
-
-            (elBtn3, _) <- elAttr' "button" ("class" =: "button") $ dynText $ tshow <$> dNumLevel3Composers
-
-            let eBtn3Click = domEvent Click elBtn3
-            dNumLevel3Composers <- (+1) <$> count eBtn3Click
-
-            let itercomp n f = if n <= 0 then id else f . (itercomp (n-1) f)
-
-            let dComposeLevel1 = zipDynWith (\f g -> g f) (constDyn succ) (itercomp <$> dNumLevel1Composers)
-            let dComposeLevel2 = zipDynWith (\f g -> g f) dComposeLevel1  (itercomp <$> dNumLevel2Composers)
-            let dComposeLevel3 = zipDynWith (\f g -> g f) dComposeLevel2  (itercomp <$> dNumLevel3Composers)
-
-          return dComposeLevel3
-        --let dClickFunc = constDyn (+0)
+        dClickFunc <- clickFunctionUpgrades 8 (constDyn succ)
 
         -- FUNCTORLAND
         el "h2" $ text "Functors"
@@ -222,9 +223,9 @@ nimWidget = do
 
       let buttonAttrs = ("class" =: "button")
       rec
-        startButtonAttrs <- foldDyn ($) buttonAttrs . mergeWith (.) $
-          [ (\old -> old <> ("style" =: "visibility:hidden;transition-duration:1ms")) <$ eBtn
-          , (\_ -> buttonAttrs) <$ eGameOver
+        startButtonAttrs <- holdDyn buttonAttrs $ leftmost
+          [ ("class" =: "button removed") <$ eBtn
+          , buttonAttrs <$ eGameOver
           ]
         (elBtn, _) <- do
           (innerElBtn,_) <- elDynAttr' "button" startButtonAttrs $ text "Start"
@@ -293,7 +294,7 @@ buttons (nimState,player) = do
               let move = (pile, bead)
               let buttonAttrs = ("class" =: "button")
               rec
-                let hoverAttrs = (buttonAttrs <> ("style" =: "background-color:tomato")) <$ (leftmost [eBeadHover, () <$ accHover])
+                let hoverAttrs = ("class" =: "button hover") <$ (leftmost [eBeadHover, () <$ accHover])
                 let outAttrs = buttonAttrs <$ (leftmost [eBeadOut, () <$ accOut])
                 dynAttrs <- holdDyn buttonAttrs $ hoverAttrs <> outAttrs
                 let ( eBeadHover

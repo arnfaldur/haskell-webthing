@@ -7,17 +7,32 @@ body {
 }
 
 .button {
-    border: 0.05em;
+    border: 0;
     border-radius: 100%;
     border-style: solid;
     border-color: #222;
-    margin: 0.15em 0.1em;
+    margin: 0.15em;
     width: auto-fit;
     min-width: 3em;
     height: 3em;
     transition-duration: 100ms;
     font-size: large;
     outline: none;
+}
+
+.button.disabled {
+    background-color: black;
+    color: white;
+}
+
+.button.hover {
+    transition-duration: 50ms;
+    background-color: tomato;
+}
+
+.button.removed {
+    visibility:hidden;
+    transition-duration: 0ms;
 }
 
 .button.big {
