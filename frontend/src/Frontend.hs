@@ -29,7 +29,6 @@ import Data.Bool
 import Data.Bits
 import Data.Time
 
--- | (_,True) if it's the players turn
 type GameState = (Board,Player)
 type Board = [Integer]
 type Move = (Integer,Integer)
@@ -39,36 +38,61 @@ other :: Player -> Player
 other User = DrNim
 other DrNim = User
 
--- This runs in a monad that can be run on the client or the server.
--- To run code in a pure client or pure server context, use one of the
--- `prerender` functions.
 frontend :: Frontend (R FrontendRoute)
 frontend = Frontend
   { _frontend_head = do
-      el "title" $ text "Nim Game"
+      el "title" $ text "FUPR Project"
       elAttr "link" ("href" =: static @"main.css"
                      <> "type" =: "text/css"
                      <> "rel" =: "stylesheet") blank
+
+  -- prerender_ allows us to run all the code just on the client
+  --            In this case we are running just (return ()) on the server
+  --            and the rest of the code on the client.
   , _frontend_body = prerender_ (return ()) $ do
+
+      -- Buttons at the top of the page
       (elMonadBtn, _) <- el' "button" $ text "MonadClicker"
       (elNimBtn, _)   <- el' "button" $ text "Nim"
 
+      -- Get click events when the buttons at the top are clicked
       let eMonadClick = domEvent Click elMonadBtn
       let eNimClick   = domEvent Click elNimBtn
 
-      widgetHold_ monadClickerWidget (leftmost [monadClickerWidget <$ eMonadClick, nimWidget <$ eNimClick])
-
+      -- Deliver the appropriate game as a "widget" when each button is clicked
+      -- where "monadClickerWidget" is the default
+      widgetHold_ monadClickerWidget $ leftmost [ monadClickerWidget <$ eMonadClick
+                                                , nimWidget          <$ eNimClick
+                                                ]
       return ()
   }
 
-functorConstructor :: (DomBuilder t m, PostBuild t m, Show a3, MonadHold t m, MonadFix m) =>
-                  Integer
-                  -> Dynamic t Integer
-                  -> Event t Integer
-                  -> Integer
-                  -> Event t b
-                  -> a3
-                  -> m (Event t (Integer -> Integer), Dynamic t Integer)
+purchaseButton :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
+  => Dynamic t Bool
+  -> Dynamic t Integer
+  -> m ( Element EventResult (DomBuilderSpace m) t)
+purchaseButton dCanAfford dValue = do
+  rec
+    (elBtn, _) <- elDynAttr' "button" buttonAttrs $ dynText (tshow <$> dValue)
+
+    -- NOTE: Yuck
+    --       All this is if we can't afford, disable the button, but if we can afford color if hovered
+    let buttonAttrs = zipDynWith (\canAfford isHover -> ("class" =: bool "button disabled" (bool "button" "button hover" isHover) canAfford)) dCanAfford dHover
+
+    let eMouseOver = domEvent Mouseover elBtn
+    let eMouseOut  = domEvent Mouseout  elBtn
+
+    dHover <- holdDyn False $ leftmost [True <$ eMouseOver, False <$ eMouseOut]
+  return elBtn
+
+functorConstructor :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Show b)
+  => Integer
+  -> Dynamic t Integer
+  -> Event t Integer
+  -> Integer
+  -> Event t a
+  -> b
+  -> m (Dynamic t Integer, Event t (Integer -> Integer))
 functorConstructor metaness dNumMetaFunctors eMonadsUpdate functorPrice eTick tickerHz = do
   rec
     dCanAffordSpam <- holdDyn False ((\(a,b) -> a <= b) <$> (attachPromptlyDyn dFunctorPrice eMonadsUpdate))
@@ -84,7 +108,6 @@ functorConstructor metaness dNumMetaFunctors eMonadsUpdate functorPrice eTick ti
                     , (\x y -> x + y) <$> (tagPromptlyDyn dNumMetaFunctors eTick)
                     ]
 
-    -- let fFunctorPrice = (\n -> functorPrice * (n+1)^2)
     let fFunctorPrice = (\n -> functorPrice * (n+1)^2)
 
     let dFunctorPrice = ffor dNumFunctors fFunctorPrice
@@ -97,8 +120,7 @@ functorConstructor metaness dNumMetaFunctors eMonadsUpdate functorPrice eTick ti
           else "Functor"
 
     elFunctorButton <- el "div" $ do
-      let buttonAttrs = fmap (("class" =:) . bool "button disabled" "button") dCanAfford
-      (elBtn, _) <- elDynAttr' "button" buttonAttrs $ dynText (tshow <$> dNumFunctors)
+      elBtn <- purchaseButton dCanAfford dNumFunctors
       el "t" $ text $ T.pack $ name ++ " => (+" ++ (show tickerHz) ++ " Ms/s) : "
       el "t" $ dynText $ (fmap tshow (dFunctorPrice))
       el "t" $ text " Ms \t"
@@ -106,46 +128,86 @@ functorConstructor metaness dNumMetaFunctors eMonadsUpdate functorPrice eTick ti
 
     let eFunctorButtonClick = domEvent Click elFunctorButton
 
-  return (eFunctorCost, dNumFunctors)
+  return (dNumFunctors, eFunctorCost)
 
---metaFunctorButtons :: ( DomBuilder t1 m, PostBuild t1 m, Show a2, Num t2, Num a2,
---            Eq t2, MonadHold t1 m, MonadFix m, Ord a1, Show a3, Show a1,
---            Num a1) =>
---            t2 -> Int -> Event t1 a1 -> Event t1 b -> a3 -> (Int -> a1) -> m ([Event t1 (a1 -> a1)], Dynamic t1 a2)
+
+metaFunctorButtons :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Show b)
+  => Integer
+  -> Event t Integer
+  -> Event t a -> b
+  -> (Integer -> Integer)
+  -> m (Dynamic t Integer, [Event t (Integer -> Integer)])
 metaFunctorButtons metaness eMonadsUpdate eTick tickerHz priceOf = inner 0
   where inner n = do
           rec
-            (eCost,dNum) <- (functorConstructor
+            (dNum, eCost) <- (functorConstructor
                              n
                              (dNumMetaer)
                              eMonadsUpdate
                              (priceOf n)
                              eTick
                              tickerHz)
-            (eCosts,dNumMetaer) <- (if n == metaness
-                                    then return ([], constDyn 0)
+            (dNumMetaer, eCosts) <- (if n == metaness
+                                    then return (constDyn 0, [])
                                     else inner (n+1))
-          return ((eCost:eCosts), dNum)
+          return (dNum, (eCost:eCosts))
 
 
-itercomp n f = if n <= 0 then id else f . (itercomp (n-1) f)
 
---clickFunctionUpgrades :: (
---  DomBuilder t m,
---  PostBuild t m,
---  MonadHold t m,
---  MonadFix m
---  ) => Integer -> Dynamic t (Integer -> Integer) -> m (Dynamic t (Integer -> Integer))
-clickFunctionUpgrades n dFunc | n <= 0 = do
-                                  return dFunc
-                              | otherwise = do
-                                rec
-                                  (elBtn, _) <- elAttr' "button" ("class" =: "button") $ dynText $ tshow <$> dNumComposers
-                                  let eBtnClick = domEvent Click elBtn
-                                  dNumComposers <- (+1) <$> (count eBtnClick)
-                                  let dComposeLevel = zipDynWith (\f g -> g f) dFunc (itercomp <$> dNumComposers)
-                                  retFunc <- clickFunctionUpgrades (n-1) dComposeLevel
-                                return retFunc
+clickFunctionUpgrades :: (
+  DomBuilder t m,
+  PostBuild t m,
+  MonadHold t m,
+  MonadFix m
+  )
+  => Integer
+  -> Dynamic t (Integer -> Integer)
+  -> Event t Integer
+  -> m (Dynamic t (Integer -> Integer), [Event t (Integer -> Integer)])
+clickFunctionUpgrades n dInitialFunc eMonadsUpdate = inner 0 dInitialFunc []
+      where
+    inner n' dFunc costEvents
+      | n  <  0    = do return (dFunc, costEvents)
+      | n' >= n    = do return (dFunc, costEvents)
+      | otherwise = do
+        rec
+          elBtn <- el "div" $ do
+            elBtn <- purchaseButton dCanAfford ((\x -> x-1) <$> dNumComposers)
+            el "t" $ text $ T.pack $ "Level " ++ (show n') ++ " upgrades :: "
+            el "t" $ dynText $ (fmap tshow (dComposerPrice))
+            el "t" $ text " Monads"
+            return elBtn
+
+          let eBtnClick = domEvent Click elBtn
+
+          -- NOTE: This is a repeated pattern we might be able to abstract
+          --       or maybe find a function that does this more elegantly
+          dCanAffordSpam <- holdDyn False ((\(a,b) -> a <= b) <$> (attachPromptlyDyn dComposerPrice eMonadsUpdate))
+          dCanAfford <- holdUniqDyn dCanAffordSpam
+          let eCanAfford = updated dCanAfford
+
+          eComposerPurchase  <- switchHold never $
+                         leftmost [ eBtnClick <$ ffilter id  eCanAfford
+                                  , never     <$ ffilter not eCanAfford
+                                  ]
+
+          -- NOTE: This should be parameterized as an argument to the top-level function
+          let fComposerPrice y = 6^(2 * n' + 1) * 2 ^ (y-1)
+
+          let dComposerPrice = ffor dNumComposers (fComposerPrice)
+
+          let eComposerCost = (\x y -> y - fComposerPrice (x-1)) <$> (tagPromptlyDyn dNumComposers eComposerPurchase)
+
+          dNumComposers <- (+1) <$> (count eComposerPurchase)
+
+          let itercomp n f = if n <= 0 then id else f . (itercomp (n-1) f)
+
+          -- Very complex way to get multiplication currently :)
+          let dComposeLevel = zipDynWith (\f g -> g f) dFunc (itercomp <$> dNumComposers)
+
+          retFunc <- inner (n'+1) dComposeLevel (eComposerCost:costEvents)
+
+        return retFunc
 
 
 monadClickerWidget ::(
@@ -160,7 +222,7 @@ monadClickerWidget ::(
   PostBuild t m
   ) => m ()
 monadClickerWidget = do
-      let functorPrice         = 6
+      let functorPrice         = 256
       let multiplier           = 64 -- Should be a function, the exponential growth overshadows this
       let tickerHz             = 2
       rec
@@ -176,31 +238,46 @@ monadClickerWidget = do
         (elMonadBtn, _) <- elAttr' "button" ("class" =: "button big") $ dynText dButtonText
         let eMonadBtnClick = domEvent Click elMonadBtn
 
-        (elResetBtn, _ ) <- elAttr' "button" ("class" =: "button") $ text "RESET MONADS"
-        let eResetBtnClick = domEvent Click elResetBtn
+        -- For debugging
+        --(elResetBtn, _ ) <- elAttr' "button" ("class" =: "button") $ text "RESET MONADS"
+        --let eResetBtnClick = domEvent Click elResetBtn
 
         -- CLICK FUNCTION UPGRADES
         el "h2" $ text "Upgrade click function"
 
-        dClickFunc <- clickFunctionUpgrades 8 (constDyn succ)
+        (dClickFunc, clickUpgradeCostEvents) <- clickFunctionUpgrades 4 (constDyn succ) eMonadsUpdate
 
         -- FUNCTORLAND
         el "h2" $ text "Functors"
 
         let priceOf metaness = functorPrice * multiplier ^ metaness
-        (functorCostEvents, dNumFunctors) <- metaFunctorButtons 18 eMonadsUpdate eTick tickerHz priceOf
+        (dNumFunctors, functorCostEvents) <- metaFunctorButtons 18 eMonadsUpdate eTick tickerHz priceOf
 
         -- OTHER THINGS
         let eMonadsUpdate = updated dMonads
 
+        let costEvents = functorCostEvents ++ clickUpgradeCostEvents
+
         dMonads <- foldDyn ($) 0 . mergeWith (.) $
-          functorCostEvents ++
-          [ (const 0) <$ eResetBtnClick
-          , tagPromptlyDyn dClickFunc eMonadBtnClick
+          costEvents ++ 
+          [ tagPromptlyDyn dClickFunc eMonadBtnClick
           , (\funcs val -> val + funcs) <$> ffilter (>0) (tagPromptlyDyn dNumFunctors eTick)
           ]
 
       return ()
+
+
+--
+----
+------
+--------
+----------
+-- BEGIN NIM
+----------
+--------
+------
+----
+--
 
 nimWidget :: (
   PerformEvent t m,
