@@ -173,9 +173,9 @@ clickFunctionUpgrades n dInitialFunc eMonadsUpdate = inner 0 dInitialFunc []
         rec
           elBtn <- el "div" $ do
             elBtn <- purchaseButton dCanAfford ((\x -> x-1) <$> dNumComposers)
-            el "t" $ text $ T.pack $ "Level " ++ (show n') ++ " upgrades :: "
-            el "t" $ dynText $ (fmap tshow (dComposerPrice))
-            el "t" $ text " Monads"
+            el "span" $ text $ T.pack $ "Level " ++ (show n') ++ " upgrades :: "
+            el "span" $ dynText $ (fmap tshow (dComposerPrice))
+            el "span" $ text " Monads"
             return elBtn
 
           let eBtnClick = domEvent Click elBtn
