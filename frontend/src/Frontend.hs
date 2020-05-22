@@ -55,7 +55,7 @@ frontend = Frontend
       (elMonadBtn, _) <- el' "button" $ text "MonadClicker"
       (elNimBtn, _)   <- el' "button" $ text "Nim"
 
-      -- Get click events when the buttons at the top are clicked
+      -- Get click events when the nimButtons at the top are clicked
       let eMonadClick = domEvent Click elMonadBtn
       let eNimClick   = domEvent Click elNimBtn
 
@@ -75,9 +75,8 @@ purchaseButton dCanAfford dValue = do
   rec
     (elBtn, _) <- elDynAttr' "button" buttonAttrs $ dynText (tshow <$> dValue)
 
-    -- NOTE: Yuck
-    --       All this is if we can't afford, disable the button, but if we can afford color if hovered
-    let buttonAttrs = zipDynWith (\canAfford isHover -> ("class" =: bool "button disabled" (bool "button" "button hover" isHover) canAfford)) dCanAfford dHover
+    let buttonClassDelegator = \canAfford isHover -> ("class" =: bool "button disabled" (bool "button" "button hover" isHover) canAfford)
+    let buttonAttrs = zipDynWith buttonClassDelegator dCanAfford dHover
 
     let eMouseOver = domEvent Mouseover elBtn
     let eMouseOut  = domEvent Mouseout  elBtn
@@ -245,7 +244,7 @@ monadClickerWidget = do
         -- CLICK FUNCTION UPGRADES
         el "h2" $ text "Upgrade click function"
 
-        (dClickFunc, clickUpgradeCostEvents) <- clickFunctionUpgrades 4 (constDyn succ) eMonadsUpdate
+        (dClickFunc, clickUpgradeCostEvents) <- clickFunctionUpgrades 5 (constDyn succ) eMonadsUpdate
 
         -- FUNCTORLAND
         el "h2" $ text "Functors"
@@ -342,12 +341,13 @@ nimWidget = do
 
 
         dState :: Dynamic t GameState <-
-          foldDyn ($) ([], User) . mergeWith (.) $ [ fmap (\m (b,p) -> (nim m b, other p)) ePlayerMove
-                                                   , fmap (\_ (b,p) -> (nim (bestMove b rng) b, other p)) eDrNimMove
-                                                   , (\_ -> (reverse [1..5], User)) <$ eBtn
-                                                   ]
+          foldDyn ($) ([], User) . mergeWith (.)
+          $ [ fmap (\m (b,p) -> (nim m b, other p)) ePlayerMove
+            , fmap (\_ (b,p) -> (nim (bestMove b rng) b, other p)) eDrNimMove
+            , (\_ -> (reverse [1..5], User)) <$ eBtn
+            ]
 
-        huh :: Event t (Event t Move, Event t Move) <- networkView $ buttons <$> dState
+        huh :: Event t (Event t Move, Event t Move) <- networkView $ nimButtons <$> dState
         eBeadHover :: Event t Move <- switchHold never $ fst <$> huh
         eBeadClick :: Event t Move <- switchHold never $ snd <$> huh
 
@@ -359,12 +359,12 @@ nimWidget = do
         -- else do return ()
       return ()
 
-buttons ::
+nimButtons ::
   ( DomBuilder t m
   , PostBuild t m
   , MonadHold t m
   , MonadFix m) => GameState -> m (Event t Move, Event t Move)
-buttons (nimState,player) = do
+nimButtons (nimState,player) = do
     events <- forM (zip [0..] nimState) $ \(pile, pileSize) -> divClass "row" $ do
       let lamb = (
             \(accHover, accOut, accClick) bead -> do
