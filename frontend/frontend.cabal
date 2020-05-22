@@ -7,6 +7,10 @@ library
   hs-source-dirs: src
   build-depends: base
                , common
+               , random
+               , mtl
+               , time
+               , reflex
                , obelisk-frontend
                , obelisk-route
                , jsaddle

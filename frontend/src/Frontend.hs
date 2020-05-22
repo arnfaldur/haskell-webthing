@@ -121,9 +121,9 @@ functorConstructor metaness dNumMetaFunctors eMonadsUpdate functorPrice eTick ti
 
     elFunctorButton <- el "div" $ do
       elBtn <- purchaseButton dCanAfford dNumFunctors
-      el "t" $ text $ T.pack $ name ++ " => (+" ++ (show tickerHz) ++ " Ms/s) : "
-      el "t" $ dynText $ (fmap tshow (dFunctorPrice))
-      el "t" $ text " Ms \t"
+      el "span" $ text $ T.pack $ name ++ " => (+" ++ (show tickerHz) ++ " Ms/s) : "
+      el "span" $ dynText $ (fmap tshow (dFunctorPrice))
+      el "span" $ text " Ms \t"
       return elBtn
 
     let eFunctorButtonClick = domEvent Click elFunctorButton
@@ -351,12 +351,12 @@ nimWidget = do
         eBeadHover :: Event t Move <- switchHold never $ fst <$> huh
         eBeadClick :: Event t Move <- switchHold never $ snd <$> huh
 
-        if debug then do
-          bom <- holdDyn (0,0) $ eBeadClick
-          bim <- holdDyn (0,0) $ eBeadHover
-          el "h1" $ dynText $ fmap tshow $ bom
-          el "p" $ dynText $ fmap tshow $ bim
-        else do return ()
+        -- if debug then do
+        --   bom <- holdDyn (0,0) $ eBeadClick
+        --   bim <- holdDyn (0,0) $ eBeadHover
+        --   el "h1" $ dynText $ fmap tshow $ bom
+        --   el "p" $ dynText $ fmap tshow $ bim
+        -- else do return ()
       return ()
 
 buttons ::
